@@ -459,7 +459,7 @@ class DataCollatorForNI:
             # add the input first.
             task_input += "Now complete the following example -\n"
             task_input += f"Input: {instance['Instance']['input'].strip()}"
-            if not task_input[-1] in string.punctuation:
+            if task_input[-1] not in string.punctuation:
                 task_input += "."
             task_input += "\n"
             task_input += "Output: "
@@ -476,7 +476,7 @@ class DataCollatorForNI:
                     )
                 else:
                     definition = "Definition: " + instance["Definition"].strip()
-                if not definition[-1] in string.punctuation:
+                if definition[-1] not in string.punctuation:
                     definition += "."
                 definition += "\n\n"
 
@@ -487,18 +487,18 @@ class DataCollatorForNI:
             ):
                 pos_example_str = f" Positive Example {idx+1} -\n"
                 pos_example_str += f"Input: {pos_example['input'].strip()}"
-                if not pos_example_str[-1] in string.punctuation:
+                if pos_example_str[-1] not in string.punctuation:
                     pos_example_str += "."
                 pos_example_str += "\n"
                 pos_example_str += f" Output: {pos_example['output'].strip()}"
-                if not pos_example_str[-1] in string.punctuation:
+                if pos_example_str[-1] not in string.punctuation:
                     pos_example_str += "."
                 pos_example_str += "\n"
                 if add_explanation and "explanation" in pos_example:
                     pos_example_str += (
                         f" Explanation: {pos_example['explanation'].strip()}"
                     )
-                    if not pos_example_str[-1] in string.punctuation:
+                    if pos_example_str[-1] not in string.punctuation:
                         pos_example_str += "."
                     pos_example_str += "\n"
                 pos_example_str += "\n"
@@ -524,18 +524,18 @@ class DataCollatorForNI:
             ):
                 neg_example_str = f" Negative Example {idx+1} -\n"
                 neg_example_str += f"Input: {neg_example['input'].strip()}"
-                if not neg_example_str[-1] in string.punctuation:
+                if neg_example_str[-1] not in string.punctuation:
                     neg_example_str += "."
                 neg_example_str += "\n"
                 neg_example_str += f" Output: {neg_example['output'].strip()}"
-                if not neg_example_str[-1] in string.punctuation:
+                if neg_example_str[-1] not in string.punctuation:
                     neg_example_str += "."
                 neg_example_str += "\n"
                 if add_explanation and "explanation" in neg_example:
                     neg_example_str += (
                         f" Explanation: {neg_example['explanation'].strip()}"
                     )
-                    if not neg_example_str[-1] in string.punctuation:
+                    if neg_example_str[-1] not in string.punctuation:
                         neg_example_str += "."
                     neg_example_str += "\n"
                 neg_example_str += "\n"
