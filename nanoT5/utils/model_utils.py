@@ -63,8 +63,17 @@ def get_config(args):
 
 
 def get_tokenizer(args):
-    tokenizer = AutoTokenizer.from_pretrained(args.model.name, use_fast=True)
+
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer.name, use_fast=True)
+    # tokenizer.model_max_length = args.model.max_length  # Use the new max length
     tokenizer.model_max_length = int(1e9)
+
+    # check to make sure T5 special tokens are in tokenizer
+    t5_mask_tokens = [f"<extra_id_{i}>" for i in range(100)]
+    _vocab = tokenizer.get_vocab()
+    assert all(
+        token in _vocab for token in t5_mask_tokens
+    ), "T5 special tokens are not in tokenizer"
 
     return tokenizer
 
@@ -311,9 +320,11 @@ def get_lr_scheduler(optimizer, args, logger):
 
         scheduler1 = LambdaLR(
             optimizer,
-            lambda step: min(1e-2, 1.0 / math.sqrt(step)) / args.optim.base_lr
-            if step
-            else 1e-2 / args.optim.base_lr,
+            lambda step: (
+                min(1e-2, 1.0 / math.sqrt(step)) / args.optim.base_lr
+                if step
+                else 1e-2 / args.optim.base_lr
+            ),
         )
 
         scheduler2 = LinearLR(
