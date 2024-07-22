@@ -18,7 +18,7 @@ from .utils import (
 )
 
 
-@hydra.main(config_path="configs", config_name="default", version_base='1.1')
+@hydra.main(config_path="configs", config_name="default", version_base="1.1")
 def main(args):
     accelerator = Accelerator(
         cpu=args.device == "cpu",
@@ -59,11 +59,19 @@ def main(args):
     elif args.predict_only:
         model.eval()
         with torch.no_grad():
-            predict(model, test_dataloader, logger,
-                    args, tokenizer)
+            predict(model, test_dataloader, logger, args, tokenizer)
     else:
-        train(model, train_dataloader, test_dataloader, accelerator,
-              lr_scheduler, optimizer, logger, args, tokenizer)
+        train(
+            model,
+            train_dataloader,
+            test_dataloader,
+            accelerator,
+            lr_scheduler,
+            optimizer,
+            logger,
+            args,
+            tokenizer,
+        )
 
     logger.finish()
 

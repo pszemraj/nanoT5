@@ -16,7 +16,6 @@
 # Lint as: python3
 """Natural Instruction V2 Dataset."""
 
-
 import json
 import os
 import random
@@ -42,8 +41,16 @@ through an iterative peer review process to ensure their quality.
 
 _URL = "https://instructions.apps.allenai.org/"
 
+
 class NIConfig(datasets.BuilderConfig):
-    def __init__(self, *args, task_dir=None, max_num_instances_per_task=None, max_num_instances_per_eval_task=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        task_dir=None,
+        max_num_instances_per_task=None,
+        max_num_instances_per_eval_task=None,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.task_dir: str = task_dir
         self.max_num_instances_per_task: int = max_num_instances_per_task
@@ -73,16 +80,20 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
                     "Categories": [datasets.Value("string")],
                     "Reasoning": [datasets.Value("string")],
                     "Definition": [datasets.Value("string")],
-                    "Positive Examples": [{
-                        "input": datasets.Value("string"),
-                        "output": datasets.Value("string"),
-                        "explanation": datasets.Value("string")
-                    }],
-                    "Negative Examples": [{
-                        "input": datasets.Value("string"),
-                        "output": datasets.Value("string"),
-                        "explanation": datasets.Value("string")
-                    }],
+                    "Positive Examples": [
+                        {
+                            "input": datasets.Value("string"),
+                            "output": datasets.Value("string"),
+                            "explanation": datasets.Value("string"),
+                        }
+                    ],
+                    "Negative Examples": [
+                        {
+                            "input": datasets.Value("string"),
+                            "output": datasets.Value("string"),
+                            "explanation": datasets.Value("string"),
+                        }
+                    ],
                     "Input_language": [datasets.Value("string")],
                     "Output_language": [datasets.Value("string")],
                     "Instruction_language": [datasets.Value("string")],
@@ -94,9 +105,9 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
                     "Instance": {
                         "id": datasets.Value("string"),
                         "input": datasets.Value("string"),
-                        "output": [datasets.Value("string")]
+                        "output": [datasets.Value("string")],
                     },
-                    "Instance License": [datasets.Value("string")]
+                    "Instance License": [datasets.Value("string")],
                 }
             ),
             supervised_keys=None,
@@ -108,8 +119,12 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
         """Returns SplitGenerators."""
         if self.config.data_dir is None or self.config.task_dir is None:
             dl_path = dl_manager.download_and_extract(_URL)
-            self.config.data_dir = self.config.data_dir or os.path.join(dl_path, "splits")
-            self.config.task_dir = self.config.task_dir or os.path.join(dl_path, "tasks")
+            self.config.data_dir = self.config.data_dir or os.path.join(
+                dl_path, "splits"
+            )
+            self.config.task_dir = self.config.task_dir or os.path.join(
+                dl_path, "tasks"
+            )
 
         split_dir = self.config.data_dir
         task_dir = self.config.task_dir
@@ -118,15 +133,16 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 gen_kwargs={
-                    "path": os.path.join(split_dir, "train_tasks.txt"), 
-                    "task_dir": task_dir, 
+                    "path": os.path.join(split_dir, "train_tasks.txt"),
+                    "task_dir": task_dir,
                     "max_num_instances_per_task": self.config.max_num_instances_per_task,
-                    "subset": "train"
-                }),
+                    "subset": "train",
+                },
+            ),
             # datasets.SplitGenerator(
             #     name=datasets.Split.VALIDATION,
             #     gen_kwargs={
-            #         "path": os.path.join(split_dir, "dev_tasks.txt"), 
+            #         "path": os.path.join(split_dir, "dev_tasks.txt"),
             #         "task_dir": task_dir,
             #         "max_num_instances_per_task": self.config.max_num_instances_per_eval_task,
             #         "subset": "dev"
@@ -134,14 +150,17 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name=datasets.Split.TEST,
                 gen_kwargs={
-                    "path": os.path.join(split_dir, "test_tasks.txt"), 
-                    "task_dir": task_dir, 
+                    "path": os.path.join(split_dir, "test_tasks.txt"),
+                    "task_dir": task_dir,
                     "max_num_instances_per_task": self.config.max_num_instances_per_eval_task,
-                    "subset": "test"
-                }),
+                    "subset": "test",
+                },
+            ),
         ]
 
-    def _generate_examples(self, path=None, task_dir=None, max_num_instances_per_task=None, subset=None):
+    def _generate_examples(
+        self, path=None, task_dir=None, max_num_instances_per_task=None, subset=None
+    ):
         """Yields examples."""
         logger.info(f"Generating tasks from = {path}")
         with open(path, encoding="utf-8") as split_f:
@@ -162,7 +181,10 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
                         instances = all_instances[:100]
                     else:
                         instances = all_instances
-                    if max_num_instances_per_task is not None and max_num_instances_per_task >= 0:
+                    if (
+                        max_num_instances_per_task is not None
+                        and max_num_instances_per_task >= 0
+                    ):
                         random.shuffle(instances)
                         instances = instances[:max_num_instances_per_task]
                     for idx, instance in enumerate(instances):
@@ -170,4 +192,3 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
                         example["id"] = instance["id"]
                         example["Instance"] = instance
                         yield f"{task_name}_{idx}", example
-

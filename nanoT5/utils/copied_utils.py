@@ -192,7 +192,9 @@ class DataCollatorForT5MLM:
         return is_noise[:orig_length]
 
 
-def compute_input_and_target_lengths(inputs_length, noise_density, mean_noise_span_length):
+def compute_input_and_target_lengths(
+    inputs_length, noise_density, mean_noise_span_length
+):
     """This function is copy of `random_spans_helper <https://github.com/google-research/text-to-text-transfer-transformer/blob/84f8bcc14b5f2c03de51bd3587609ba8f6bbd1cd/t5/data/preprocessors.py#L2466>`__ .
 
     [Copied from https://github.com/huggingface/transformers/blob/main/examples/flax/language-modeling/run_t5_mlm_flax.py]
@@ -227,10 +229,15 @@ def compute_input_and_target_lengths(inputs_length, noise_density, mean_noise_sp
 
     tokens_length = inputs_length
 
-    while _tokens_length_to_inputs_length_targets_length(tokens_length + 1)[0] <= inputs_length:
+    while (
+        _tokens_length_to_inputs_length_targets_length(tokens_length + 1)[0]
+        <= inputs_length
+    ):
         tokens_length += 1
 
-    inputs_length, targets_length = _tokens_length_to_inputs_length_targets_length(tokens_length)
+    inputs_length, targets_length = _tokens_length_to_inputs_length_targets_length(
+        tokens_length
+    )
 
     # minor hack to get the targets length to be equal to inputs length
     # which is more likely to have been set to a nice round number.
@@ -277,12 +284,22 @@ class AdamWScale(Optimizer):
         if lr < 0.0:
             raise ValueError(f"Invalid learning rate: {lr} - should be >= 0.0")
         if not 0.0 <= betas[0] < 1.0:
-            raise ValueError(f"Invalid beta parameter: {betas[0]} - should be in [0.0, 1.0)")
+            raise ValueError(
+                f"Invalid beta parameter: {betas[0]} - should be in [0.0, 1.0)"
+            )
         if not 0.0 <= betas[1] < 1.0:
-            raise ValueError(f"Invalid beta parameter: {betas[1]} - should be in [0.0, 1.0)")
+            raise ValueError(
+                f"Invalid beta parameter: {betas[1]} - should be in [0.0, 1.0)"
+            )
         if not 0.0 <= eps:
             raise ValueError(f"Invalid epsilon value: {eps} - should be >= 0.0")
-        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, correct_bias=correct_bias)
+        defaults = dict(
+            lr=lr,
+            betas=betas,
+            eps=eps,
+            weight_decay=weight_decay,
+            correct_bias=correct_bias,
+        )
         super().__init__(params, defaults)
 
     @staticmethod
@@ -306,7 +323,9 @@ class AdamWScale(Optimizer):
                     continue
                 grad = p.grad.data
                 if grad.is_sparse:
-                    raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
+                    raise RuntimeError(
+                        "Adam does not support sparse gradients, please consider SparseAdam instead"
+                    )
 
                 state = self.state[p]
                 beta1, beta2 = group["betas"]
@@ -333,7 +352,9 @@ class AdamWScale(Optimizer):
                 if group["correct_bias"]:  # No bias correction for Bert
                     bias_correction1 = 1.0 - beta1 ** state["step"]
                     bias_correction2 = 1.0 - beta2 ** state["step"]
-                    step_size = step_size * math.sqrt(bias_correction2) / bias_correction1
+                    step_size = (
+                        step_size * math.sqrt(bias_correction2) / bias_correction1
+                    )
 
                 # /Adapt Step from Adafactor
                 step_size = step_size * max(1e-3, self._rms(p.data))
@@ -375,6 +396,8 @@ def tokenize_function(examples, tokenizer, in_length):
 
 
 from transformers.data.data_collator import *
+
+
 @dataclass
 class DataCollatorForNI:
     tokenizer: PreTrainedTokenizerBase
@@ -393,7 +416,6 @@ class DataCollatorForNI:
     text_only: bool = False
 
     def __call__(self, batch, return_tensors=None):
-
         if return_tensors is None:
             return_tensors = self.return_tensors
 
@@ -471,9 +493,7 @@ class DataCollatorForNI:
             definition = ""
             if add_task_definition:
                 if isinstance(instance["Definition"], list):
-                    definition = (
-                        "Definition: " + instance["Definition"][0].strip()
-                    )
+                    definition = "Definition: " + instance["Definition"][0].strip()
                 else:
                     definition = "Definition: " + instance["Definition"].strip()
                 if definition[-1] not in string.punctuation:
