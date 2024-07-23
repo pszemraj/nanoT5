@@ -1,3 +1,5 @@
+import math
+
 import datasets
 import torch
 from datasets.iterable_dataset import IterableDataset
@@ -40,10 +42,22 @@ def get_model(args, config):
     return model
 
 
-def get_config(args):
-    config = AutoConfig.from_pretrained(
-        args.model.name,
-    )
+def get_config(args, tokenizer: AutoTokenizer):
+
+    config = AutoConfig.from_pretrained(args.model.name)
+
+    # Update config with new vocab size and relevant special tokens
+    config.vocab_size = math.ceil(len(tokenizer) / 128) * 128  # ensure divisible by 128
+
+    if config.pad_token_id is None or config.pad_token_id != tokenizer.pad_token_id:
+        config.pad_token_id = tokenizer.pad_token_id
+    if (
+        config.decoder_start_token_id is None
+        or config.decoder_start_token_id != tokenizer.pad_token_id
+    ):
+        config.decoder_start_token_id = tokenizer.pad_token_id
+    if config.eos_token_id is None or config.eos_token_id != tokenizer.eos_token_id:
+        config.eos_token_id = tokenizer.eos_token_id
 
     if hasattr(args.model, "overwrite"):
         for k, v in args.model.overwrite.items():
@@ -62,6 +76,11 @@ def get_tokenizer(args):
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer.name, use_fast=True)
     # tokenizer.model_max_length = args.model.max_length  # Use the new max length
     tokenizer.model_max_length = int(1e9)
+
+    # check for pad token and eos token
+    assert (
+        tokenizer.pad_token_id is not None and tokenizer.eos_token_id is not None
+    ), "Tokenizer should have pad_token_id and eos_token_id"
 
     # check to make sure T5 special tokens are in tokenizer
     t5_mask_tokens = [f"<extra_id_{i}>" for i in range(100)]
