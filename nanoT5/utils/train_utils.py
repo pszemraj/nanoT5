@@ -1,8 +1,10 @@
-import torch
 import time
+
 import evaluate
-from .logging_utils import Averager
+import torch
 from datasets.iterable_dataset import IterableDataset
+
+from .logging_utils import Averager
 
 
 def maybe_save_checkpoint(accelerator, args):

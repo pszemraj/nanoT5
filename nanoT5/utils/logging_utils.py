@@ -1,12 +1,12 @@
+import logging
+import os
 from collections import defaultdict
 
+import datasets
+import neptune
+import transformers
 from accelerate.logging import get_logger
 from omegaconf import OmegaConf, open_dict
-import logging
-import datasets
-import transformers
-import neptune
-import os
 
 
 class Averager:

@@ -1,15 +1,14 @@
-from typing import Dict, List
-import numpy as np
-from transformers import BatchEncoding
-from dataclasses import dataclass
-from transformers import AutoTokenizer
-import torch
 import math
-from torch.optim import Optimizer
-from typing import Iterable, Tuple
-from torch import nn
 import random
 import string
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Tuple
+
+import numpy as np
+import torch
+from torch import nn
+from torch.optim import Optimizer
+from transformers import AutoTokenizer, BatchEncoding
 
 
 @dataclass

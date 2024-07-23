@@ -1,10 +1,11 @@
-import torch
 import os
 
+import torch
 from accelerate.utils import set_seed
-from omegaconf import open_dict
-from .logging_utils import Logger
 from hydra.utils import to_absolute_path
+from omegaconf import open_dict
+
+from .logging_utils import Logger
 
 
 def check_args_and_env(args):

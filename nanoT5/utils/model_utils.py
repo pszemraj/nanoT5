@@ -1,19 +1,15 @@
-import torch
 import datasets
-from torch.utils.data import DataLoader
-from omegaconf import open_dict
+import torch
 from datasets.iterable_dataset import IterableDataset
-from transformers import (
-    AutoTokenizer,
-    T5ForConditionalGeneration,
-    AutoConfig,
-)
+from omegaconf import open_dict
+from torch.utils.data import DataLoader
+from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration
 
 from .copied_utils import (
-    compute_input_and_target_lengths,
-    DataCollatorForT5MLM,
-    tokenize_function,
     DataCollatorForNI,
+    DataCollatorForT5MLM,
+    compute_input_and_target_lengths,
+    tokenize_function,
 )
 from .t5_model import MyT5
 
@@ -63,7 +59,6 @@ def get_config(args):
 
 
 def get_tokenizer(args):
-
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer.name, use_fast=True)
     # tokenizer.model_max_length = args.model.max_length  # Use the new max length
     tokenizer.model_max_length = int(1e9)
@@ -279,11 +274,7 @@ def get_optimizer(model, args):
 
 def get_lr_scheduler(optimizer, args, logger):
     if args.optim.lr_scheduler == "cosine":
-        from torch.optim.lr_scheduler import (
-            SequentialLR,
-            LinearLR,
-            CosineAnnealingLR,
-        )
+        from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
         scheduler1 = LinearLR(
             optimizer,
@@ -306,11 +297,8 @@ def get_lr_scheduler(optimizer, args, logger):
         )
     elif args.optim.lr_scheduler == "legacy":
         import math
-        from torch.optim.lr_scheduler import (
-            SequentialLR,
-            LinearLR,
-            LambdaLR,
-        )
+
+        from torch.optim.lr_scheduler import LambdaLR, LinearLR, SequentialLR
 
         msg = "You are using T5 legacy LR Schedule, it's independent from the optim.base_lr"
         logger.log_message(msg)

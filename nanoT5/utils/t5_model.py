@@ -2,20 +2,16 @@
 
 import copy
 import math
-from typing import Optional
 from dataclasses import dataclass
+from typing import Optional
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-
-from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.modeling_outputs import ModelOutput
+from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.t5.configuration_t5 import T5Config
-from transformers.models.t5.modeling_t5 import (
-    T5LayerNorm,
-    T5DenseGatedActDense,
-)
+from transformers.models.t5.modeling_t5 import T5DenseGatedActDense, T5LayerNorm
 
 
 @dataclass
