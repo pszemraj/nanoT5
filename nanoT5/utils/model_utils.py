@@ -73,10 +73,13 @@ def get_config(args, tokenizer: AutoTokenizer):
 
 
 def get_tokenizer(args):
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.tokenizer.name or args.model.name, use_fast=True
-    )
-    # tokenizer.model_max_length = args.model.max_length
+    # access args.tokenizer, defaulting to None if it doesn't exist
+    tokenizer_config = getattr(args, "tokenizer", None)
+
+    # If tokenizer config exists and has a name, use it; otherwise, use the model name
+    tokenizer_name = getattr(tokenizer_config, "name", None) or args.model.name
+
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
     tokenizer.model_max_length = int(1e9)
 
     # check for pad token and eos token
