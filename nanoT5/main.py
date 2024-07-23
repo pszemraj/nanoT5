@@ -13,6 +13,7 @@ from .utils import (
     get_model,
     get_optimizer,
     get_tokenizer,
+    model_summary,
     predict,
     setup_basics,
     train,
@@ -35,6 +36,7 @@ def main(args):
     train_dataloader, test_dataloader = get_dataloaders(tokenizer, config, args)
 
     logger.log_args(args)
+    model_summary(model)
 
     (
         model,
