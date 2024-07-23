@@ -37,6 +37,7 @@ def main(args):
 
     logger.log_args(args)
     model_summary(model)
+    model.config.save_pretrained(".")
 
     (
         model,
