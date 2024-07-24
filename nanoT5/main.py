@@ -78,6 +78,7 @@ def main(args):
             tokenizer,
         )
 
+    tokenizer.save_pretrained("./tokenizer")
     logger.finish()
 
 
