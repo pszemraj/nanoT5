@@ -14,13 +14,13 @@ seed: 2137
 model:
   klass: local_t5
   name: 'google/t5-v1_1-base'
-  overwrite:
+  overwrite: # overwrite config with these values
     dropout_rate: 0.0
-  add_config:
+  add_config: # add these values to the config
     is_bf16: false
   checkpoint_path: ''
   random_init: true
-  compile: false # Pytorch 2.0
+  compile: true # Pytorch 2.0
 
 data:
   input_length: 512
