@@ -1,38 +1,43 @@
-from accelerate import Accelerator
-from omegaconf import open_dict
-import hydra
-import torch
 import time
 
+import hydra
+import torch
+from accelerate import Accelerator
+from omegaconf import open_dict
+
 from .utils import (
-    setup_basics,
-    train,
-    predict,
     eval,
+    get_config,
+    get_dataloaders,
     get_lr_scheduler,
+    get_model,
     get_optimizer,
     get_tokenizer,
-    get_model,
-    get_dataloaders,
-    get_config,
+    model_summary,
+    predict,
+    setup_basics,
+    train,
 )
 
 
-@hydra.main(config_path="configs", config_name="default", version_base='1.1')
+@hydra.main(config_path="configs", config_name="default", version_base="1.1")
 def main(args):
     accelerator = Accelerator(
         cpu=args.device == "cpu",
         mixed_precision=args.precision,
     )
     logger = setup_basics(accelerator, args)
-    config = get_config(args)
-    model = get_model(args, config)
     tokenizer = get_tokenizer(args)
+
+    config = get_config(args, tokenizer)
+    model = get_model(args, config)
     optimizer = get_optimizer(model, args)
     lr_scheduler = get_lr_scheduler(optimizer, args, logger)
     train_dataloader, test_dataloader = get_dataloaders(tokenizer, config, args)
 
     logger.log_args(args)
+    model_summary(model)
+    model.config.save_pretrained(".")
 
     (
         model,
@@ -59,12 +64,21 @@ def main(args):
     elif args.predict_only:
         model.eval()
         with torch.no_grad():
-            predict(model, test_dataloader, logger,
-                    args, tokenizer)
+            predict(model, test_dataloader, logger, args, tokenizer)
     else:
-        train(model, train_dataloader, test_dataloader, accelerator,
-              lr_scheduler, optimizer, logger, args, tokenizer)
+        train(
+            model,
+            train_dataloader,
+            test_dataloader,
+            accelerator,
+            lr_scheduler,
+            optimizer,
+            logger,
+            args,
+            tokenizer,
+        )
 
+    tokenizer.save_pretrained("./tokenizer")
     logger.finish()
 
 

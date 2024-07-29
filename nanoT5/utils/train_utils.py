@@ -1,8 +1,10 @@
-import torch
 import time
+
 import evaluate
-from .logging_utils import Averager
+import torch
 from datasets.iterable_dataset import IterableDataset
+
+from .logging_utils import Averager
 
 
 def maybe_save_checkpoint(accelerator, args):
@@ -10,7 +12,7 @@ def maybe_save_checkpoint(accelerator, args):
         args.current_train_step > args.optim.total_steps
         or args.current_train_step % args.checkpoint.every_steps == 0
     ):
-        output_dir = f'checkpoint-{args.mode}-{args.current_train_step}'
+        output_dir = f"checkpoint-{args.mode}-{args.current_train_step}"
         accelerator.save_state(output_dir=output_dir)
 
 
@@ -24,10 +26,8 @@ def maybe_eval_predict(model, dataloader, logger, args, tokenizer):
         with torch.no_grad():
             eval(model, dataloader, logger, args, tokenizer)
 
-            if args.mode == 'ft':
-                predict(
-                    model, dataloader, logger, args, tokenizer
-                )
+            if args.mode == "ft":
+                predict(model, dataloader, logger, args, tokenizer)
 
         args.last_log = time.time()
         model.train()
@@ -44,7 +44,7 @@ def maybe_logging(averager, args, model, optimizer, logger):
             stats=averaged_stats,
             step=args.current_train_step,
             args=args,
-            prefix='train/'
+            prefix="train/",
         )
 
         args.last_log = time.time()
@@ -63,10 +63,13 @@ def maybe_grad_clip_and_grad_calc(accelerator, model, args):
     if args.logging.grad_l2:
         if grad_l2 is None:
             grad_l2 = (
-                sum(p.grad.detach().data.norm(2).item() ** 2 for p in model.parameters()) ** 0.5
+                sum(
+                    p.grad.detach().data.norm(2).item() ** 2 for p in model.parameters()
+                )
+                ** 0.5
             )
 
-        return {'grad_l2': grad_l2}
+        return {"grad_l2": grad_l2}
     else:
         return {}
 
@@ -75,11 +78,13 @@ def extra_stats(args, model, optimizer):
     stats = {}
 
     if args.logging.weights_l2:
-        weights_l2 = sum(p.detach().norm(2).item() ** 2 for p in model.parameters()) ** 0.5
-        stats['weights_l2'] = weights_l2
+        weights_l2 = (
+            sum(p.detach().norm(2).item() ** 2 for p in model.parameters()) ** 0.5
+        )
+        stats["weights_l2"] = weights_l2
 
-    stats['lr'] = optimizer.param_groups[0]['lr']
-    stats['seconds_per_step'] = (time.time() - args.last_log) / args.logging.every_steps
+    stats["lr"] = optimizer.param_groups[0]["lr"]
+    stats["seconds_per_step"] = (time.time() - args.last_log) / args.logging.every_steps
 
     return stats
 
@@ -89,12 +94,12 @@ def forward(model, batch, calc_acc=False):
     loss = outputs.loss
 
     stats = {}
-    stats['loss'] = loss.detach().float().item()
+    stats["loss"] = loss.detach().float().item()
 
     if calc_acc:
         correct = (outputs.logits.argmax(-1) == batch["labels"]).sum().item()
         accuracy = correct / batch["labels"].numel()
-        stats['accuracy'] = accuracy
+        stats["accuracy"] = accuracy
 
     return loss, stats
 
@@ -110,20 +115,17 @@ def eval(model, dataloader, logger, args, tokenizer):
         _, stats = forward(model, batch, calc_acc=True)
         averager.update(stats)
 
-    averager.update({'time': time.time() - args.last_log})
+    averager.update({"time": time.time() - args.last_log})
     averaged_stats = averager.average()
 
     logger.log_stats(
-        stats=averaged_stats,
-        step=args.current_train_step,
-        args=args,
-        prefix='eval/'
+        stats=averaged_stats, step=args.current_train_step, args=args, prefix="eval/"
     )
 
 
 def predict(model, dataloader, logger, args, tokenizer):
     args.last_log = time.time()
-    metric = evaluate.load('rouge')
+    metric = evaluate.load("rouge")
     samples_seen = 0
 
     def decode(preds):
@@ -136,8 +138,8 @@ def predict(model, dataloader, logger, args, tokenizer):
 
     for step, batch in enumerate(dataloader):
         predictions = model.generate(
-            input_ids=batch['input_ids'],
-            attention_mask=batch['attention_mask'],
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
             max_length=args.data.max_target_len,
             generation_config=model.generation_config,
         )
@@ -170,8 +172,17 @@ def predict(model, dataloader, logger, args, tokenizer):
     )
 
 
-def train(model, train_dataloader, test_dataloader, accelerator, lr_scheduler,
-          optimizer, logger, args, tokenizer):
+def train(
+    model,
+    train_dataloader,
+    test_dataloader,
+    accelerator,
+    lr_scheduler,
+    optimizer,
+    logger,
+    args,
+    tokenizer,
+):
     model.train()
 
     train_averager = Averager()

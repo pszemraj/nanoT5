@@ -1,12 +1,12 @@
+import logging
+import os
 from collections import defaultdict
 
+import datasets
+import neptune
+import transformers
 from accelerate.logging import get_logger
 from omegaconf import OmegaConf, open_dict
-import logging
-import datasets
-import transformers
-import neptune
-import os
 
 
 class Averager:
@@ -34,7 +34,7 @@ class Averager:
 
 class Logger:
     def __init__(self, args, accelerator):
-        self.logger = get_logger('Main')
+        self.logger = get_logger("Main")
 
         # Make one log on every process with the configuration for debugging.
         logging.basicConfig(
@@ -43,7 +43,7 @@ class Logger:
             level=logging.INFO,
         )
         self.logger.info(accelerator.state, main_process_only=False)
-        self.logger.info(f'Working directory is {os.getcwd()}')
+        self.logger.info(f"Working directory is {os.getcwd()}")
 
         if accelerator.is_local_main_process:
             datasets.utils.logging.set_verbosity_warning()
@@ -73,15 +73,20 @@ class Logger:
     def log_args(self, args):
         if self.neptune_logger is not None:
             logging_args = OmegaConf.to_container(args, resolve=True)
-            self.neptune_logger['args'] = logging_args
+            self.neptune_logger["args"] = logging_args
 
-    def log_stats(self, stats, step, args, prefix=''):
+    def log_stats(self, stats, step, args, prefix=""):
         if self.neptune_logger is not None:
             for k, v in stats.items():
-                self.neptune_logger[f'{prefix}{k}'].log(v, step=step)
+                self.neptune_logger[f"{prefix}{k}"].log(v, step=step)
 
-        msg_start = f'[{prefix[:-1]}] Step {step} out of {args.optim.total_steps}' + ' | '
-        dict_msg = ' | '.join([f'{k.capitalize()} --> {v:.3f}' for k, v in stats.items()]) + ' | '
+        msg_start = (
+            f"[{prefix[:-1]}] Step {step} out of {args.optim.total_steps}" + " | "
+        )
+        dict_msg = (
+            " | ".join([f"{k.capitalize()} --> {v:.3f}" for k, v in stats.items()])
+            + " | "
+        )
 
         msg = msg_start + dict_msg
 
