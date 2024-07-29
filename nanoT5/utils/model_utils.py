@@ -106,22 +106,22 @@ def get_tokenizer(args):
 
 def load_dataset_splits(args):
     if args.mode == "pt":
-        dataset = datasets.load_dataset(
-            "c4",
-            "en",
-            streaming=True,
+        ds_fw = datasets.load_dataset(
+            "HuggingFaceTB/smollm-corpus", "fineweb-edu-dedup", streaming=True
         )
+        ds_c4 = datasets.load_dataset("c4", "en", streaming=True)
 
-        dataset = dataset.remove_columns(["timestamp", "url"])
+        ds_fw = ds_fw.remove_columns(["id", "metadata"])
+        ds_c4 = ds_c4.remove_columns(["timestamp", "url"])
 
         dataset_splits = {
-            "train": dataset["train"],
-            "test": dataset["validation"],
+            "train": ds_fw["train"],
+            "test": ds_c4["validation"],
         }
 
-        assert (
-            dataset["train"].n_shards == 1024
-        ), "We want to have many shards for efficient processing with num_workes in PyTorch dataloader"
+        # assert (
+        #     dataset["train"].n_shards == 1024
+        # ), "We want to have many shards for efficient processing with num_workes in PyTorch dataloader"
     elif args.mode == "ft":
         dataset_splits = datasets.load_dataset(
             args.data.exec_file_path,
