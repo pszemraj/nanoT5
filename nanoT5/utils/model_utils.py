@@ -150,7 +150,7 @@ def load_dataset_splits(args):
                 eval_dataset = eval_dataset.add_item(example)
 
             # The training set is the remaining stream
-            train_dataset = full_dataset["train"].skip(args.data.n_eval_examples)
+            train_dataset = full_dataset["train"]
 
             dataset_splits = {"train": train_dataset, "test": eval_dataset}
         else:
@@ -219,6 +219,11 @@ def process_dataset(dataset_splits, args, tokenizer):
                         "targets",
                     ],
                 )
+
+                if isinstance(final_datasets[split], IterableDataset):
+                    final_datasets[split] = final_datasets[split].shuffle(
+                        buffer_size=10_000, seed=args.seed
+                    )
         else:
             raise NotImplementedError(f"Dataset {args.data.dataset} not implemented")
     else:
@@ -284,7 +289,11 @@ def get_dataloaders(tokenizer, config, args):
 
         shuffle = (split == "train") and not is_iterable
 
-        if args.mode == "ft" and split == "train":
+        if (
+            args.mode == "ft"
+            and split == "train"
+            and args.data.dataset == "natural_instructions"
+        ):
             assert shuffle is True
         else:
             assert shuffle is False
@@ -306,7 +315,7 @@ def get_dataloaders(tokenizer, config, args):
             args.data.test_batches = len(dataloaders["test"])
 
         if args.optim.epochs > 0:
-            assert not is_iterable
+            assert not is_iterable, "Cannot use iterable dataset w epochs."
             args.optim.total_steps = (
                 len(dataloaders["train"]) // args.optim.grad_acc
             ) * args.optim.epochs
