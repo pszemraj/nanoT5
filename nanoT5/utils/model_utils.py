@@ -139,7 +139,7 @@ def load_dataset_splits(args):
                 ["_template_idx", "_task_source", "_task_name", "_template_type"]
             )
 
-            # Create a small evaluation set
+            # Create an evaluation set from first n_eval_examples
             eval_dataset = Dataset.from_dict(
                 {k: [] for k in full_dataset["train"].features}
             )
@@ -149,8 +149,7 @@ def load_dataset_splits(args):
             for example in eval_examples:
                 eval_dataset = eval_dataset.add_item(example)
 
-            # The training set is the remaining stream
-            train_dataset = full_dataset["train"]
+            train_dataset = full_dataset["train"]  # the remaining stream
 
             dataset_splits = {"train": train_dataset, "test": eval_dataset}
         else:
@@ -225,7 +224,10 @@ def process_dataset(dataset_splits, args, tokenizer):
                         buffer_size=10_000, seed=args.seed
                     )
         else:
-            raise NotImplementedError(f"Dataset {args.data.dataset} not implemented")
+            raise NotImplementedError(
+                f"Dataset {args.data.dataset} not implemented. "
+                "Only 'natural_instructions' and 'flan' are supported."
+            )
     else:
         raise NotImplementedError
 
