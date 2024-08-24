@@ -1,11 +1,13 @@
-from collections import defaultdict
-from accelerate.logging import get_logger
-from omegaconf import OmegaConf, open_dict
 import logging
+import os
+from collections import defaultdict
+
 import datasets
 import transformers
 import wandb
-import os
+from accelerate.logging import get_logger
+from omegaconf import OmegaConf
+
 
 class Averager:
     def __init__(self, weight: float = 1):
@@ -28,9 +30,10 @@ class Averager:
         self.reset()
         return averaged_stats
 
+
 class Logger:
     def __init__(self, args, accelerator):
-        self.logger = get_logger('Main')
+        self.logger = get_logger("Main")
         # Make one log on every process with the configuration for debugging.
         logging.basicConfig(
             format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -38,7 +41,7 @@ class Logger:
             level=logging.INFO,
         )
         self.logger.info(accelerator.state, main_process_only=False)
-        self.logger.info(f'Working directory is {os.getcwd()}')
+        self.logger.info(f"Working directory is {os.getcwd()}")
         if accelerator.is_local_main_process:
             datasets.utils.logging.set_verbosity_warning()
             transformers.utils.logging.set_verbosity_info()
@@ -50,6 +53,7 @@ class Logger:
     def setup_wandb(self, args):
         if args.logging.use_wandb:
             import wandb
+
             wandb.init(
                 project=args.logging.wandb_config.project,
                 entity=args.logging.wandb_config.entity,
@@ -63,14 +67,21 @@ class Logger:
 
     def log_args(self, args):
         if self.wandb:
-            wandb.config.update(OmegaConf.to_container(args, resolve=True), allow_val_change=True)
+            wandb.config.update(
+                OmegaConf.to_container(args, resolve=True), allow_val_change=True
+            )
 
-    def log_stats(self, stats, step, args, prefix=''):
+    def log_stats(self, stats, step, args, prefix=""):
         if wandb.run is not None:
-            wandb.log({f'{prefix}{k}': v for k, v in stats.items()}, step=step)
-        
-        msg_start = f'[{prefix[:-1]}] Step {step} out of {args.optim.total_steps}' + ' | '
-        dict_msg = ' | '.join([f'{k.capitalize()} --> {v:.3f}' for k, v in stats.items()]) + ' | '
+            wandb.log({f"{prefix}{k}": v for k, v in stats.items()}, step=step)
+
+        msg_start = (
+            f"[{prefix[:-1]}] Step {step} out of {args.optim.total_steps}" + " | "
+        )
+        dict_msg = (
+            " | ".join([f"{k.capitalize()} --> {v:.3f}" for k, v in stats.items()])
+            + " | "
+        )
         msg = msg_start + dict_msg
         self.log_message(msg)
 
