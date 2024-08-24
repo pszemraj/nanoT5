@@ -184,31 +184,33 @@ def train(
     tokenizer,
 ):
     model.train()
-
     train_averager = Averager()
 
+    # Create an iterator that will restart the dataloader when it's exhausted
+    train_iter = iter(train_dataloader)
+
     while args.current_train_step <= args.optim.total_steps:
-        if isinstance(train_dataloader.dataset, IterableDataset):
-            train_dataloader.dataset.set_epoch(args.current_epoch)
+        try:
+            batch = next(train_iter)
+        except StopIteration:
+            # Restart the iterator when we've gone through the entire dataset
+            train_iter = iter(train_dataloader)
+            args.current_epoch += 1
+            if isinstance(train_dataloader.dataset, IterableDataset):
+                train_dataloader.dataset.set_epoch(args.current_epoch)
+            batch = next(train_iter)
 
-        # In case there is a remainder from previous epoch, we need to reset the optimizer
-        optimizer.zero_grad(set_to_none=True)
-
-        for batch_id, batch in enumerate(train_dataloader, start=1):
-            if args.current_train_step > args.optim.total_steps:
-                break
-
+        with accelerator.accumulate(model):
             loss, stats = forward(model, batch)
-            accelerator.backward(loss / args.optim.grad_acc)
+            accelerator.backward(loss)
             train_averager.update(stats)
 
-            if batch_id % args.optim.grad_acc == 0:
+            if accelerator.sync_gradients:
                 stats = maybe_grad_clip_and_grad_calc(accelerator, model, args)
                 train_averager.update(stats)
-
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad(set_to_none=True)
+                optimizer.zero_grad()
 
                 maybe_logging(train_averager, args, model, optimizer, logger)
                 maybe_eval_predict(model, test_dataloader, logger, args, tokenizer)
@@ -216,7 +218,8 @@ def train(
 
                 args.current_train_step += 1
 
-        args.current_epoch += 1
+        if args.current_train_step > args.optim.total_steps:
+            break
 
     maybe_eval_predict(model, test_dataloader, logger, args, tokenizer)
     maybe_save_checkpoint(accelerator, args)

@@ -14,6 +14,8 @@ from transformers import (
     T5ForConditionalGeneration,
 )
 
+from .data_collator_ul2 import DataCollatorForUL2MLM
+
 from .copied_utils import (
     DataCollatorForNI,
     DataCollatorForT5MLM,
@@ -176,14 +178,72 @@ def process_dataset(dataset_splits, args, tokenizer):
 
 def get_data_collator(tokenizer, config, args):
     if args.mode == "pt":
-        data_collator = DataCollatorForT5MLM(
-            tokenizer=tokenizer,
-            noise_density=args.data.mlm_probability,
-            mean_noise_span_length=args.data.mean_noise_span_length,
-            input_length=args.data.input_length,
-            target_length=args.data.target_length,
-            pad_token_id=config.pad_token_id,
-        )
+        if args.data.data_collator == "ul2":
+            data_collator = DataCollatorForUL2MLM(
+                tokenizer=tokenizer,
+                max_length=args.data.data_collator_args.max_token_length,
+                max_labels_length=args.data.input_length,
+                batch_size=args.optim.batch_size,
+                # denoiser_list=[{"mu": 3.0, "r": 0.15, "max_spans": 512, "prefix": ""}], # this corresponds to T5 noise parameters
+                # denoiser_proportions=[1.0]
+                denoiser_list=[
+                    {
+                        "mu": 3.0,
+                        "r": 0.15,
+                        "max_spans": args.data.data_collator_args.max_token_length,
+                        "prefix": "[R]",
+                    },
+                    {
+                        "mu": 8.0,
+                        "r": 0.15,
+                        "max_spans": args.data.data_collator_args.max_token_length,
+                        "prefix": "[R]",
+                    },
+                    {"mu": 4.0, "r": 0.0, "max_spans": 1, "prefix": "[S]"},
+                    {
+                        "mu": 3.0,
+                        "r": 0.5,
+                        "max_spans": args.data.data_collator_args.max_token_length,
+                        "prefix": "[X]",
+                    },
+                    {
+                        "mu": 8.0,
+                        "r": 0.15,
+                        "max_spans": args.data.data_collator_args.max_token_length,
+                        "prefix": "[X]",
+                    },
+                    {
+                        "mu": 64.0,
+                        "r": 0.15,
+                        "max_spans": args.data.data_collator_args.max_token_length,
+                        "prefix": "[X]",
+                    },
+                    {
+                        "mu": 64.0,
+                        "r": 0.5,
+                        "max_spans": args.data.data_collator_args.max_token_length,
+                        "prefix": "[X]",
+                    },
+                ],
+                denoiser_proportions=[
+                    0.165,
+                    0.165,
+                    0.34,
+                    0.0825,
+                    0.0825,
+                    0.0825,
+                    0.0825,
+                ],
+            )
+        else:
+            data_collator = DataCollatorForT5MLM(
+                tokenizer=tokenizer,
+                noise_density=args.data.mlm_probability,
+                mean_noise_span_length=args.data.mean_noise_span_length,
+                input_length=args.data.input_length,
+                target_length=args.data.target_length,
+                pad_token_id=config.pad_token_id,
+            )
     elif args.mode == "ft":
         data_collator = DataCollatorForNI(
             tokenizer,
@@ -217,7 +277,7 @@ def get_dataloaders(tokenizer, config, args):
     dataloaders = {}
 
     for split in ["train", "test"]:
-        batch_size = args.optim.batch_size // args.optim.grad_acc
+        # batch_size = args.optim.batch_size // args.optim.grad_acc
 
         shuffle = (split == "train") and not is_iterable
 
@@ -230,7 +290,7 @@ def get_dataloaders(tokenizer, config, args):
             dataset[split],
             shuffle=shuffle,
             collate_fn=data_collator,
-            batch_size=batch_size,
+            batch_size=args.optim.batch_size,
             num_workers=args.data.num_workers,
             pin_memory=True,
             drop_last=False,
@@ -296,6 +356,37 @@ def get_optimizer(model, args):
             optimizer_grouped_parameters,
             lr=args.optim.base_lr,
             relative_step=False,
+        )
+    elif args.optim.name == "shampoo":
+        from distributed_shampoo.distributed_shampoo import DistributedShampoo
+        from distributed_shampoo.shampoo_types import AdamGraftingConfig
+
+        class AccelerateCompatibleShampoo(DistributedShampoo):
+            def __init__(self, params, *args, **kwargs):
+                super().__init__(params, *args, **kwargs)
+                self.params = params
+
+            def state_dict(self):
+                return self.distributed_state_dict(key_to_param=self.params)
+
+            def load_state_dict(self, state_dict):
+                return self.load_distributed_state_dict(
+                    state_dict, key_to_param=self.params
+                )
+
+        optimizer = AccelerateCompatibleShampoo(
+            model.parameters(),
+            lr=args.optim.base_lr,
+            betas=(0.9, 0.999),
+            epsilon=1e-12,
+            weight_decay=args.optim.weight_decay,
+            max_preconditioner_dim=8192,
+            precondition_frequency=100,
+            use_decoupled_weight_decay=True,
+            grafting_config=AdamGraftingConfig(
+                beta2=0.999,
+                epsilon=1e-12,
+            ),
         )
     else:
         raise NotImplementedError

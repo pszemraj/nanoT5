@@ -1,3 +1,4 @@
+import os
 import time
 
 import hydra
@@ -19,18 +20,22 @@ from .utils import (
     train,
 )
 
+os.environ["WANDB_WATCH"] = "gradients"
+
 
 @hydra.main(config_path="configs", config_name="default", version_base="1.1")
 def main(args):
     accelerator = Accelerator(
         cpu=args.device == "cpu",
         mixed_precision=args.precision,
+        gradient_accumulation_steps=args.optim.grad_acc,
     )
     logger = setup_basics(accelerator, args)
     tokenizer = get_tokenizer(args)
 
     config = get_config(args, tokenizer)
     model = get_model(args, config)
+    # model.gradient_checkpointing_enable()
     optimizer = get_optimizer(model, args)
     lr_scheduler = get_lr_scheduler(optimizer, args, logger)
     train_dataloader, test_dataloader = get_dataloaders(tokenizer, config, args)
