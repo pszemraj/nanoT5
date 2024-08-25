@@ -1,6 +1,8 @@
 # nanoT5 (Encoder-Decoder / Pre-training + Fine-Tuning)
 
-![nanoT5](assets/nanoT5.png)
+<p align="center">
+  <img src="assets/nanoT5.png" alt="nanoT5" width="60%" />
+</p>
 
 [[Paper](https://arxiv.org/abs/2309.02373)] | [**TLDR**](#tldr) | [**Motivation**](#motivation) | [**Setup**](#setup) | [**Pre-training**](#pre-training) | [**Fine-tuning**](#fine-tuning) | [**Extras**](#Extras) | [**Conclusions**](#conclusions) | [**References**](#references) | [**Cite**](#cite) | [**Issues**](#issues)
 
@@ -34,7 +36,7 @@ With [nanoT5](https://github.com/PiotrNawrot/nanoT5), we want to fill a gap (Com
 In this project, we expose (for research purposes) and optimise everything in the training pipeline of T5, except from the model implementation. We include the simplified implementation of T5 model (which is great for teaching & learning purposes), however, we do not optimize it with the latest techniques like [tensor or pipeline parallelism](https://arxiv.org/pdf/2104.04473.pdf), because it makes the code much more complex and is not needed at a small scale. **Most importantly, we base our code on PyTorch, since access to TPUs is limited.** Key features:
 - **Dataset:** Downloading and preprocessing of the C4 dataset happens in parallel with the training of the model. The C4 dataset is > 300GB, so it takes a couple of hours to download it and even longer to preprocess it. This codebase does it on the fly without any detrimental effect on the training time and performance (we haven't observed it, although it might happen with an old CPU (< 8 core) or a slow internet connection). **As a result, you can initiate pre-training of your own T5 model within minutes.**
 - **Model Optimizer / LR Scheduler:** The original T5 uses a memory-efficient Adafactor optimizer. [A study on pre-training T5](https://huggingface.co/spaces/yhavinga/pre-training-dutch-t5-models), on the other hand, reports that training does not converge with AdamW which we find strange given that AdamW relies on theoretically better approximations than Adafactor. We analysed the source of this discrepancy with several ablations. Although there are many subtle differences between Adafactor and AdamW, what ensures the Adafactor convergence is [matrix-wise LR scaling by its root mean square (RMS)](https://github.com/huggingface/transformers/blob/main/src/transformers/optimization.py#L595). We augmented the AdamW implementation by RMS scaling and observed that it becomes **more stable during pre-training, achieves better validation loss, and is faster**.
-- **Exposure and simplicity:** We try to balance the implementation of the training pipeline by keeping it customisable while retaining a sufficient level of abstraction. We use the [HuggingFace Accelerator](https://huggingface.co/docs/accelerate/index) to implement operations like Checkpoint Saving, Gradient Accumulation, Gradient Clipping, and moving tensors to the correct devices. We use [neptune.ai](https://neptune.ai) for experiment tracking and [hydra](https://hydra.cc/docs/intro/) for hyperparameters. Additionally, we expose a [simplified implementation](nanoT5/utils/t5_model.py) of the T5 model, training loop, data preprocessing, etc.
+- **Exposure and simplicity:** We try to balance the implementation of the training pipeline by keeping it customisable while retaining a sufficient level of abstraction. We use the [HuggingFace Accelerator](https://huggingface.co/docs/accelerate/index) to implement operations like Checkpoint Saving, Gradient Accumulation, Gradient Clipping, and moving tensors to the correct devices. We use [wandb](https://wandb.ai) for experiment tracking and [hydra](https://hydra.cc/docs/intro/) for hyperparameters. Additionally, we expose a [simplified implementation](nanoT5/utils/t5_model.py) of the T5 model, training loop, data preprocessing, etc.
 - **Efficiency:** We use mixed-precision training (TF32 & BF16), PyTorch 2.0 compile, and utilise all optimisations listed in established optimisation tutorials [#1](https://huggingface.co/docs/transformers/perf_train_gpu_one) [#2](https://pytorch.org/tutorials/recipes/recipes/tuning_guide.html).
 
 ## Setup
@@ -44,7 +46,7 @@ In this project, we expose (for research purposes) and optimise everything in th
 ```
 git clone https://github.com/PiotrNawrot/nanoT5.git
 cd nanoT5
-conda create -n nanoT5 python=3.8
+conda create -n nanoT5 python=3.10 -y
 conda activate nanoT5
 pip install -r requirements.txt
 ```
@@ -90,15 +92,23 @@ However, AdamW, when paired with the Inverse-Square-Root LR schedule, performs w
 
 To reproduce any of the experiments mentioned above choose any combination of hyperparameters as follows:
 
+1. edit the default config `nanoT5/configs/default.yaml`
+2. launch training with `python -m nanoT5.main`
+
+Alternatively, you can manually override fields in the config when launching via CLI[^1]:
+
 ```
 python -m nanoT5.main \
     optim.name={adafactor,adamwscale} \
     optim.lr_scheduler={legacy,cosine}
 ```
 
-We recommend adding `model.compile=true` flag for pre-training, if you are able to install PyTorch 2.0.
+[^1]: the example command shows _all possible_ options, when overriding the fields pass only one of the strings in the brackets `{}`, for example `optim.name=adafactor`
 
 Suppose you don't have access to a 80GB A100 GPU. In that case, you can increase the number of gradient accumulation steps by `optim.grad_acc=steps`, where `batch_size` has to be divisible by `steps`.
+
+> [!IMPORTANT]
+> The nanoT5 gradient accumulation implementation takes a "reverse" approach to that in `transformers`, where the functional batch size is specified **explicitly** and the micro batch size is derived. The total functional batch size is specified in `optim.batch_size` and the number of grad acc steps is specified in `optim.grad_acc`. The micro batch size is then derived **as the quotient of these two numbers**.
 
 The summary of the optimization process is printed every 100 steps in the following format. For instance:
 
