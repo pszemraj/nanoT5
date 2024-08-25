@@ -50,7 +50,6 @@ def get_model(args, config):
 
 
 def get_config(args, tokenizer: AutoTokenizer):
-
     config = AutoConfig.from_pretrained(args.model.name)
 
     # Update config with new vocab size and relevant special tokens
