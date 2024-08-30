@@ -1,0 +1,60 @@
+defaults:
+  - _self_
+  - local_env: default
+
+mode: ft
+device: gpu
+precision: 'no'
+eval_only: false
+predict_only: false
+seed: 23
+
+model:
+  klass: hf_t5
+  compile: false
+  name: google/t5-efficient-tiny-nl2
+  random_init: false
+  checkpoint_path: ''
+
+data:
+  dataset: flan
+  max_seq_len: 1024
+  max_target_len: 128
+  num_workers: 2
+  n_eval_examples: 500  # Number of examples to use for evaluation
+  exec_file_path: '.'
+  data_dir: '.'
+  task_dir: '.'
+
+optim:
+  name: adamw
+  base_lr: 5e-5
+  lr_scheduler: constant
+  epochs: -1
+  batch_size: 32
+  grad_acc: 4
+  weight_decay: 0.01
+  grad_clip: 1.0
+  total_steps: 50000
+  warmup_steps: 1000
+
+eval:
+  steps: 1000
+  every_steps: 10000
+
+checkpoint:
+  every_steps: 10000
+
+logging:
+  neptune: false
+  neptune_creds:
+    project:
+    api_token:
+    tags: ''
+  every_steps: 10
+  grad_l2: true
+  weights_l2: true
+
+hydra:
+  job:
+    chdir: True
