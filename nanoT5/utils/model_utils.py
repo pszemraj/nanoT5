@@ -1,15 +1,18 @@
 import math
+from itertools import islice
 from typing import List, Optional, Tuple
 
 import datasets
 import torch
 import torch.nn as nn
+from datasets import Dataset, load_dataset
 from datasets.iterable_dataset import IterableDataset
 from omegaconf import open_dict
 from torch.utils.data import DataLoader
 from transformers import (
     AutoConfig,
     AutoTokenizer,
+    DataCollatorForSeq2Seq,
     PreTrainedModel,
     T5ForConditionalGeneration,
 )
@@ -119,15 +122,38 @@ def load_dataset_splits(args):
             "train": ds_fw["train"],
             "test": ds_c4["validation"],
         }
-
     elif args.mode == "ft":
-        dataset_splits = datasets.load_dataset(
-            args.data.exec_file_path,
-            data_dir=args.data.data_dir,
-            task_dir=args.data.task_dir,
-            max_num_instances_per_task=args.data.max_num_instances_per_task,
-            max_num_instances_per_eval_task=args.data.max_num_instances_per_task,
-        )
+        if args.data.dataset == "natural_instructions":
+            dataset_splits = datasets.load_dataset(
+                args.data.exec_file_path,
+                data_dir=args.data.data_dir,
+                task_dir=args.data.task_dir,
+                max_num_instances_per_task=args.data.max_num_instances_per_task,
+                max_num_instances_per_eval_task=args.data.max_num_instances_per_task,
+            )
+        elif args.data.dataset == "flan":
+            full_dataset = load_dataset(
+                "Open-Orca/FLAN", streaming=True
+            ).remove_columns(
+                ["_template_idx", "_task_source", "_task_name", "_template_type"]
+            )
+
+            # Create a small evaluation set
+            eval_dataset = Dataset.from_dict(
+                {k: [] for k in full_dataset["train"].features}
+            )
+            eval_examples = list(
+                islice(full_dataset["train"], args.data.n_eval_examples)
+            )
+            for example in eval_examples:
+                eval_dataset = eval_dataset.add_item(example)
+
+            # The training set is the remaining stream
+            train_dataset = full_dataset["train"].skip(args.data.n_eval_examples)
+
+            dataset_splits = {"train": train_dataset, "test": eval_dataset}
+        else:
+            raise NotImplementedError(f"Dataset {args.data.dataset} not implemented")
     else:
         raise NotImplementedError
 
@@ -139,9 +165,6 @@ def process_dataset(dataset_splits, args, tokenizer):
         final_datasets = {}
 
         for split, dataset_split in dataset_splits.items():
-            # We increase the input_length, because instead of masking tokens T5 replaces
-            # masked spans with a single token, therefore to avoid padding we need to have
-            # longer sequences at the start, before masking
             before_mask_input_length, target_length = compute_input_and_target_lengths(
                 inputs_length=args.data.input_length,
                 noise_density=args.data.mlm_probability,
@@ -165,7 +188,38 @@ def process_dataset(dataset_splits, args, tokenizer):
             dataset_split = dataset_split.shuffle(buffer_size=10_000, seed=args.seed)
             final_datasets[split] = dataset_split
     elif args.mode == "ft":
-        final_datasets = dataset_splits
+        if args.data.dataset == "natural_instructions":
+            final_datasets = dataset_splits
+        elif args.data.dataset == "flan":
+
+            def flan_tokenize_function(examples):
+                model_inputs = tokenizer(
+                    examples["inputs"],
+                    max_length=args.data.max_seq_len,
+                    truncation=True,
+                    padding="longest",  # updated from "max_length"
+                )
+                labels = tokenizer(
+                    examples["targets"],
+                    max_length=args.data.max_target_len,
+                    truncation=True,
+                    padding="longest",  # updated from "max_length"
+                )
+                model_inputs["labels"] = labels["input_ids"]
+                return model_inputs
+
+            final_datasets = {}
+            for split, dataset in dataset_splits.items():
+                final_datasets[split] = dataset.map(
+                    flan_tokenize_function,
+                    batched=True,
+                    remove_columns=[
+                        "inputs",
+                        "targets",
+                    ],
+                )
+        else:
+            raise NotImplementedError(f"Dataset {args.data.dataset} not implemented")
     else:
         raise NotImplementedError
 
@@ -183,20 +237,30 @@ def get_data_collator(tokenizer, config, args):
             pad_token_id=config.pad_token_id,
         )
     elif args.mode == "ft":
-        data_collator = DataCollatorForNI(
-            tokenizer,
-            padding="longest",
-            max_source_length=args.data.max_seq_len,
-            max_target_length=args.data.max_target_len,
-            label_pad_token_id=-100,
-            pad_to_multiple_of=8,
-            add_task_name=args.data.add_task_name,
-            add_task_definition=args.data.add_task_definition,
-            num_pos_examples=args.data.num_pos_examples,
-            num_neg_examples=args.data.num_neg_examples,
-            add_explanation=args.data.add_explanation,
-            tk_instruct=args.data.tk_instruct,
-        )
+        if args.data.dataset == "natural_instructions":
+            data_collator = DataCollatorForNI(
+                tokenizer,
+                padding="longest",
+                max_source_length=args.data.max_seq_len,
+                max_target_length=args.data.max_target_len,
+                label_pad_token_id=-100,
+                pad_to_multiple_of=8,
+                add_task_name=args.data.add_task_name,
+                add_task_definition=args.data.add_task_definition,
+                num_pos_examples=args.data.num_pos_examples,
+                num_neg_examples=args.data.num_neg_examples,
+                add_explanation=args.data.add_explanation,
+                tk_instruct=args.data.tk_instruct,
+            )
+        elif args.data.dataset == "flan":
+            data_collator = DataCollatorForSeq2Seq(
+                tokenizer,
+                model=None,  # We don't need to pass the model here
+                label_pad_token_id=-100,
+                pad_to_multiple_of=8,
+            )
+        else:
+            raise NotImplementedError(f"Dataset {args.data.dataset} not implemented")
     else:
         raise NotImplementedError
 
