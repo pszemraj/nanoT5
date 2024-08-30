@@ -107,10 +107,10 @@ def load_dataset_splits(args):
     if args.mode == "pt":
         ds_fw = datasets.load_dataset(
             "HuggingFaceTB/smollm-corpus", "fineweb-edu-dedup", streaming=True
-        )
+        ).shuffle(seed=args.seed)
         ds_c4 = datasets.load_dataset(
             "c4", "en", streaming=True, trust_remote_code=True
-        )
+        ).shuffle(seed=args.seed)
 
         ds_fw = ds_fw.remove_columns(["id", "metadata"])
         ds_c4 = ds_c4.remove_columns(["timestamp", "url"])
