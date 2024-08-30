@@ -36,7 +36,7 @@ def main(args):
     train_dataloader, test_dataloader = get_dataloaders(tokenizer, config, args)
 
     logger.log_args(args)
-    model_summary(model)
+    model_summary(model, max_depth=3)
     model.config.save_pretrained(".")
 
     (
