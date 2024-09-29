@@ -364,6 +364,26 @@ def get_optimizer(model, args):
             eps=1e-8,
             max_grad_norm=args.optim.grad_clip,
         )
+    elif args.optim.name == "ademamix":
+        from bitsandbytes.optim import AdEMAMix
+
+        optimizer = AdEMAMix(
+            optimizer_grouped_parameters,
+            lr=args.optim.base_lr,
+            betas=(0.9, 0.999, 0.9999),
+            eps=1e-8,
+            alpha=5.0,
+        )
+    elif args.optim.name == "paged_ademamix_32bit":
+        from bitsandbytes.optim import PagedAdEMAMix
+
+        optimizer = PagedAdEMAMix(
+            optimizer_grouped_parameters,
+            lr=args.optim.base_lr,
+            betas=(0.9, 0.999, 0.9999),
+            eps=1e-8,
+            alpha=5.0,
+        )
     elif args.optim.name == "adamwscale":
         from .copied_utils import AdamWScale
 
