@@ -352,12 +352,25 @@ def get_optimizer(model, args):
             betas=(0.9, 0.999),  # Default AdamW betas
             eps=1e-8,  # Default AdamW epsilon
         )
+    elif args.optim.name == "paged_adamw_32bit":
+        from bitsandbytes.optim import PagedAdamW32bit
+
+        # requires bitsandbytes >= 0.39.0
+
+        optimizer = PagedAdamW32bit(
+            optimizer_grouped_parameters,
+            lr=args.optim.base_lr,
+            betas=(0.9, 0.999),
+            eps=1e-8,
+            max_grad_norm=args.optim.grad_clip,
+        )
     elif args.optim.name == "adamwscale":
         from .copied_utils import AdamWScale
 
         optimizer = AdamWScale(
             optimizer_grouped_parameters,
             lr=args.optim.base_lr,
+            betas=(0.9, 0.999),
         )
     elif args.optim.name == "adafactor":
         from transformers import Adafactor
