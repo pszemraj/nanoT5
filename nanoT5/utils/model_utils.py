@@ -133,10 +133,8 @@ def load_dataset_splits(args):
             )
         elif args.data.dataset == "flan":
             full_dataset = load_dataset(
-                "Open-Orca/FLAN", streaming=True
-            ).remove_columns(
-                ["_template_idx", "_task_source", "_task_name", "_template_type"]
-            )
+                "BEE-spoke-data/FLAN-compressed-plusplus", streaming=True
+            ).remove_columns(["_task_name"])
 
             # Create an evaluation set from first n_eval_examples
             eval_dataset = Dataset.from_dict(
