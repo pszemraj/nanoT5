@@ -8,6 +8,7 @@ import torch.nn as nn
 from datasets import Dataset, load_dataset
 from datasets.iterable_dataset import IterableDataset
 from omegaconf import open_dict
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import (
     AutoConfig,
@@ -326,7 +327,6 @@ def get_dataloaders(tokenizer, config, args):
 
 def get_optimizer(model, args):
     no_decay = ["bias", "LayerNorm", "layernorm", "layer_norm", "ln"]
-
     optimizer_grouped_parameters = [
         {
             "params": [
@@ -345,13 +345,12 @@ def get_optimizer(model, args):
             "weight_decay": 0.0,
         },
     ]
-
     if args.optim.name == "adamw":
-        from transformers import AdamW
-
         optimizer = AdamW(
             optimizer_grouped_parameters,
             lr=args.optim.base_lr,
+            betas=(0.9, 0.999),  # Default AdamW betas
+            eps=1e-8,  # Default AdamW epsilon
         )
     elif args.optim.name == "adamwscale":
         from .copied_utils import AdamWScale
@@ -370,7 +369,6 @@ def get_optimizer(model, args):
         )
     else:
         raise NotImplementedError
-
     return optimizer
 
 
