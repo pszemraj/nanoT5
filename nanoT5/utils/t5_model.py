@@ -200,10 +200,10 @@ class T5Attention(nn.Module):
             real_seq_length if key_value_states is None else key_value_states.shape[1]
         )
 
-        def shape(states):
+        def shape(states, heads):
             """Projection"""
             return states.view(
-                batch_size, -1, self.n_heads, self.key_value_proj_dim
+                batch_size, -1, heads, self.key_value_proj_dim
             ).transpose(1, 2)
 
         def unshape(states):
@@ -213,13 +213,13 @@ class T5Attention(nn.Module):
             )
 
         # Project key, value, and query then split heads
-        query_states = shape(self.q(hidden_states))
+        query_states = shape(self.q(hidden_states), self.n_heads)
         if key_value_states is None:
-            key_states = shape(self.k(hidden_states))
-            value_states = shape(self.v(hidden_states))
+            key_states = shape(self.k(hidden_states), self.num_key_value_heads)
+            value_states = shape(self.v(hidden_states), self.num_key_value_heads)
         else:
-            key_states = shape(self.k(key_value_states))
-            value_states = shape(self.v(key_value_states))
+            key_states = shape(self.k(key_value_states), self.num_key_value_heads)
+            value_states = shape(self.v(key_value_states), self.num_key_value_heads)
 
         # Group Query Attention
         if self.use_gqa:
