@@ -48,35 +48,27 @@ class T5Attention(nn.Module):
         self.is_decoder = config.is_decoder
         self.has_relative_attention_bias = has_relative_attention_bias
         self.relative_attention_num_buckets = config.relative_attention_num_buckets
-        self.relative_attention_max_distance = config.relative_attention_max_distance
         self.d_model = config.d_model
         self.key_value_proj_dim = config.d_kv
         self.n_heads = config.num_heads
         self.dropout = config.dropout_rate
         self.inner_dim = self.n_heads * self.key_value_proj_dim
 
-        # New GQA-related attributes
+        # GQA-related attributes
         self.use_gqa = getattr(config, "use_gqa", False)
-        self.num_query_groups = getattr(config, "num_query_groups", self.n_heads)
+        self.num_key_value_heads = getattr(config, "num_key_value_heads", self.n_heads)
+        self.num_key_value_groups = self.n_heads // self.num_key_value_heads
 
-        if self.use_gqa:
-            # For GQA, we need fewer query heads
-            self.q = nn.Linear(
-                self.d_model,
-                self.num_query_groups * self.key_value_proj_dim,
-                bias=False,
-            )
-        else:
-            self.q = nn.Linear(self.d_model, self.inner_dim, bias=False)
-
-        self.k = nn.Linear(self.d_model, self.inner_dim, bias=False)
-        self.v = nn.Linear(self.d_model, self.inner_dim, bias=False)
-        self.o = nn.Linear(self.inner_dim, self.d_model, bias=False)
+        # Linear layers for query, key, and value projections
+        self.q = nn.Linear(self.d_model, self.n_heads * self.key_value_proj_dim, bias=False)
+        self.k = nn.Linear(self.d_model, self.num_key_value_heads * self.key_value_proj_dim, bias=False)
+        self.v = nn.Linear(self.d_model, self.num_key_value_heads * self.key_value_proj_dim, bias=False)
+        self.o = nn.Linear(self.n_heads * self.key_value_proj_dim, self.d_model, bias=False)
 
         if self.has_relative_attention_bias:
-            self.relative_attention_bias = nn.Embedding(
-                self.relative_attention_num_buckets, self.n_heads
-            )
+            self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads)
+
+
 
     @staticmethod
     def _relative_position_bucket(
@@ -181,72 +173,56 @@ class T5Attention(nn.Module):
             position_bias: [batch_size, n_heads, seq_length, seq_length]
         """
         batch_size, seq_length = hidden_states.shape[:2]
-        real_seq_length = seq_length
-        key_length = (
-            real_seq_length if key_value_states is None else key_value_states.shape[1]
-        )
 
-        def shape(states, is_query=False):
-            if self.use_gqa and is_query:
-                return states.view(
-                    batch_size, -1, self.num_query_groups, self.key_value_proj_dim
-                ).transpose(1, 2)
+        def shape(states, is_key_value=False):
+            """Separate heads"""
+            if is_key_value:
+                return states.view(batch_size, -1, self.num_key_value_heads, self.key_value_proj_dim).transpose(1, 2)
             else:
-                return states.view(
-                    batch_size, -1, self.n_heads, self.key_value_proj_dim
-                ).transpose(1, 2)
+                return states.view(batch_size, -1, self.n_heads, self.key_value_proj_dim).transpose(1, 2)
 
         def unshape(states):
-            return (
-                states.transpose(1, 2).contiguous().view(batch_size, -1, self.inner_dim)
-            )
+            """Combine heads"""
+            return states.transpose(1, 2).contiguous().view(batch_size, -1, self.inner_dim)
 
-        query_states = shape(self.q(hidden_states), is_query=True)
-
+        # Project query, key, value
+        query_states = shape(self.q(hidden_states))
         if key_value_states is None:
-            key_states = shape(self.k(hidden_states))
-            value_states = shape(self.v(hidden_states))
+            key_states = shape(self.k(hidden_states), is_key_value=True)
+            value_states = shape(self.v(hidden_states), is_key_value=True)
         else:
-            key_states = shape(self.k(key_value_states))
-            value_states = shape(self.v(key_value_states))
+            key_states = shape(self.k(key_value_states), is_key_value=True)
+            value_states = shape(self.v(key_value_states), is_key_value=True)
 
+        # Repeat key and value states for multi-query attention
         if self.use_gqa:
-            # For GQA, we need to adjust the shape of key and value states
-            key_states = key_states.repeat_interleave(
-                self.n_heads // self.num_query_groups, dim=1
-            )
-            value_states = value_states.repeat_interleave(
-                self.n_heads // self.num_query_groups, dim=1
-            )
+            key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
+            value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
 
+        # Compute scores
         scores = torch.matmul(query_states, key_states.transpose(3, 2))
 
         if position_bias is None:
             if not self.has_relative_attention_bias:
                 position_bias = torch.zeros(
-                    (1, self.n_heads, real_seq_length, key_length),
+                    (1, self.n_heads, seq_length, seq_length),
                     device=scores.device,
                     dtype=scores.dtype,
                 )
             else:
-                position_bias = self.compute_bias(
-                    real_seq_length, key_length, device=scores.device
-                )
+                position_bias = self.compute_bias(seq_length)
 
             if mask is not None:
                 position_bias = position_bias + mask
 
         scores += position_bias
         attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(scores)
-        attn_weights = nn.functional.dropout(
-            attn_weights, p=self.dropout, training=self.training
-        )
+        attn_weights = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
 
         attn_output = unshape(torch.matmul(attn_weights, value_states))
         attn_output = self.o(attn_output)
 
-        return (attn_output, position_bias)
-
+        return attn_output, position_bias
 
 class T5LayerSelfAttention(nn.Module):
     def __init__(self, config, has_relative_attention_bias=False):
