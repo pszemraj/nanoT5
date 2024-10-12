@@ -42,6 +42,20 @@ class T5LayerFF(nn.Module):
         return hidden_states
 
 
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
+    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    """
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(
+        batch, num_key_value_heads, n_rep, slen, head_dim
+    )
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+
 class T5Attention(nn.Module):
     def __init__(self, config: T5Config, has_relative_attention_bias=False):
         super().__init__()
@@ -60,15 +74,23 @@ class T5Attention(nn.Module):
         self.num_key_value_groups = self.n_heads // self.num_key_value_heads
 
         # Linear layers for query, key, and value projections
-        self.q = nn.Linear(self.d_model, self.n_heads * self.key_value_proj_dim, bias=False)
-        self.k = nn.Linear(self.d_model, self.num_key_value_heads * self.key_value_proj_dim, bias=False)
-        self.v = nn.Linear(self.d_model, self.num_key_value_heads * self.key_value_proj_dim, bias=False)
-        self.o = nn.Linear(self.n_heads * self.key_value_proj_dim, self.d_model, bias=False)
+        self.q = nn.Linear(
+            self.d_model, self.n_heads * self.key_value_proj_dim, bias=False
+        )
+        self.k = nn.Linear(
+            self.d_model, self.num_key_value_heads * self.key_value_proj_dim, bias=False
+        )
+        self.v = nn.Linear(
+            self.d_model, self.num_key_value_heads * self.key_value_proj_dim, bias=False
+        )
+        self.o = nn.Linear(
+            self.n_heads * self.key_value_proj_dim, self.d_model, bias=False
+        )
 
         if self.has_relative_attention_bias:
-            self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads)
-
-
+            self.relative_attention_bias = nn.Embedding(
+                self.relative_attention_num_buckets, self.n_heads
+            )
 
     @staticmethod
     def _relative_position_bucket(
@@ -173,31 +195,36 @@ class T5Attention(nn.Module):
             position_bias: [batch_size, n_heads, seq_length, seq_length]
         """
         batch_size, seq_length = hidden_states.shape[:2]
+        real_seq_length = seq_length
+        key_length = (
+            real_seq_length if key_value_states is None else key_value_states.shape[1]
+        )
 
-        def shape(states, is_key_value=False):
-            """Separate heads"""
-            if is_key_value:
-                return states.view(batch_size, -1, self.num_key_value_heads, self.key_value_proj_dim).transpose(1, 2)
-            else:
-                return states.view(batch_size, -1, self.n_heads, self.key_value_proj_dim).transpose(1, 2)
+        def shape(states):
+            """Projection"""
+            return states.view(
+                batch_size, -1, self.n_heads, self.key_value_proj_dim
+            ).transpose(1, 2)
 
         def unshape(states):
-            """Combine heads"""
-            return states.transpose(1, 2).contiguous().view(batch_size, -1, self.inner_dim)
+            """Reshape"""
+            return (
+                states.transpose(1, 2).contiguous().view(batch_size, -1, self.inner_dim)
+            )
 
-        # Project query, key, value
+        # Project key, value, and query then split heads
         query_states = shape(self.q(hidden_states))
         if key_value_states is None:
-            key_states = shape(self.k(hidden_states), is_key_value=True)
-            value_states = shape(self.v(hidden_states), is_key_value=True)
+            key_states = shape(self.k(hidden_states))
+            value_states = shape(self.v(hidden_states))
         else:
-            key_states = shape(self.k(key_value_states), is_key_value=True)
-            value_states = shape(self.v(key_value_states), is_key_value=True)
+            key_states = shape(self.k(key_value_states))
+            value_states = shape(self.v(key_value_states))
 
-        # Repeat key and value states for multi-query attention
+        # Group Query Attention
         if self.use_gqa:
-            key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
-            value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
+            key_states = repeat_kv(key_states, self.num_key_value_groups)
+            value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         # Compute scores
         scores = torch.matmul(query_states, key_states.transpose(3, 2))
@@ -205,24 +232,27 @@ class T5Attention(nn.Module):
         if position_bias is None:
             if not self.has_relative_attention_bias:
                 position_bias = torch.zeros(
-                    (1, self.n_heads, seq_length, seq_length),
+                    (1, self.n_heads, real_seq_length, key_length),
                     device=scores.device,
                     dtype=scores.dtype,
                 )
             else:
-                position_bias = self.compute_bias(seq_length)
+                position_bias = self.compute_bias(real_seq_length, key_length)
 
             if mask is not None:
                 position_bias = position_bias + mask
 
         scores += position_bias
         attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(scores)
-        attn_weights = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
+        attn_weights = nn.functional.dropout(
+            attn_weights, p=self.dropout, training=self.training
+        )
 
         attn_output = unshape(torch.matmul(attn_weights, value_states))
         attn_output = self.o(attn_output)
 
         return attn_output, position_bias
+
 
 class T5LayerSelfAttention(nn.Module):
     def __init__(self, config, has_relative_attention_bias=False):
