@@ -55,15 +55,23 @@ class T5Attention(nn.Module):
         self.dropout = config.dropout_rate
         self.inner_dim = self.n_heads * self.key_value_proj_dim
 
-        self.q = nn.Linear(self.d_model, self.inner_dim, bias=False)
+        # New GQA-related attributes
+        self.use_gqa = getattr(config, "use_gqa", False)
+        self.num_query_groups = getattr(config, "num_query_groups", self.n_heads)
+
+        if self.use_gqa:
+            # For GQA, we need fewer query heads
+            self.q = nn.Linear(self.d_model, self.num_query_groups * self.key_value_proj_dim, bias=False)
+        else:
+            self.q = nn.Linear(self.d_model, self.inner_dim, bias=False)
+
         self.k = nn.Linear(self.d_model, self.inner_dim, bias=False)
         self.v = nn.Linear(self.d_model, self.inner_dim, bias=False)
         self.o = nn.Linear(self.inner_dim, self.d_model, bias=False)
 
         if self.has_relative_attention_bias:
-            self.relative_attention_bias = nn.Embedding(
-                self.relative_attention_num_buckets, self.n_heads
-            )
+            self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads)
+
 
     @staticmethod
     def _relative_position_bucket(
@@ -155,45 +163,46 @@ class T5Attention(nn.Module):
         position_bias=None,
     ):
         """
-        Self-attention (if key_value_states is None) or attention over source sentence (provided by key_value_states).
+        Compute the attention output for the given input.
+
+        Args:
+            hidden_states: [batch_size, seq_length, hidden_size]
+            mask: [batch_size, seq_length, seq_length]
+            key_value_states: [batch_size, seq_length, hidden_size]
+            position_bias: [batch_size, n_heads, seq_length, seq_length]
+
+        Returns:
+            output: [batch_size, seq_length, hidden_size]
+            position_bias: [batch_size, n_heads, seq_length, seq_length]
         """
-        # Input is (batch_size, seq_length, dim)
-        # Mask is (batch_size, key_length) (non-causal) or (batch_size, key_length, key_length)
         batch_size, seq_length = hidden_states.shape[:2]
         real_seq_length = seq_length
-        key_length = (
-            real_seq_length if key_value_states is None else key_value_states.shape[1]
-        )
+        key_length = real_seq_length if key_value_states is None else key_value_states.shape[1]
 
         def shape(states):
-            """projection"""
-            return states.view(
-                batch_size, -1, self.n_heads, self.key_value_proj_dim
-            ).transpose(1, 2)
+            if self.use_gqa and states is query_states:
+                return states.view(batch_size, -1, self.num_query_groups, self.key_value_proj_dim).transpose(1, 2)
+            else:
+                return states.view(batch_size, -1, self.n_heads, self.key_value_proj_dim).transpose(1, 2)
 
         def unshape(states):
-            """reshape"""
-            return (
-                states.transpose(1, 2).contiguous().view(batch_size, -1, self.inner_dim)
-            )
+            return states.transpose(1, 2).contiguous().view(batch_size, -1, self.inner_dim)
 
-        query_states = self.q(hidden_states)
+        query_states = shape(self.q(hidden_states))
+
         if key_value_states is None:
-            key_states, value_states = self.k(hidden_states), self.v(hidden_states)
+            key_states = shape(self.k(hidden_states))
+            value_states = shape(self.v(hidden_states))
         else:
-            key_states, value_states = (
-                self.k(key_value_states),
-                self.v(key_value_states),
-            )
-        query_states, key_states, value_states = (
-            shape(query_states),
-            shape(key_states),
-            shape(value_states),
-        )
+            key_states = shape(self.k(key_value_states))
+            value_states = shape(self.v(key_value_states))
 
-        scores = torch.matmul(
-            query_states, key_states.transpose(3, 2)
-        )  # equivalent of torch.einsum("bnqd,bnkd->bnqk", query_states, key_states), compatible with onnx op>9
+        if self.use_gqa:
+            # For GQA, we need to adjust the shape of key and value states
+            key_states = key_states.repeat_interleave(self.n_heads // self.num_query_groups, dim=1)
+            value_states = value_states.repeat_interleave(self.n_heads // self.num_query_groups, dim=1)
+
+        scores = torch.matmul(query_states, key_states.transpose(3, 2))
 
         if position_bias is None:
             if not self.has_relative_attention_bias:
@@ -203,29 +212,16 @@ class T5Attention(nn.Module):
                     dtype=scores.dtype,
                 )
             else:
-                position_bias = self.compute_bias(
-                    real_seq_length, key_length, device=scores.device
-                )
+                position_bias = self.compute_bias(real_seq_length, key_length, device=scores.device)
 
             if mask is not None:
-                # Masking happens here, masked elements in the mask have the value of -inf
-                position_bias = (
-                    position_bias + mask
-                )  # (batch_size, n_heads, seq_length, key_length)
+                position_bias = position_bias + mask
 
-        position_bias_masked = position_bias
+        scores += position_bias
+        attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(scores)
+        attn_weights = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
 
-        scores += position_bias_masked
-        attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(
-            scores
-        )  # (batch_size, n_heads, seq_length, key_length)
-        attn_weights = nn.functional.dropout(
-            attn_weights, p=self.dropout, training=self.training
-        )  # (batch_size, n_heads, seq_length, key_length)
-
-        attn_output = unshape(
-            torch.matmul(attn_weights, value_states)
-        )  # (batch_size, seq_length, dim)
+        attn_output = unshape(torch.matmul(attn_weights, value_states))
         attn_output = self.o(attn_output)
 
         return (attn_output, position_bias)
