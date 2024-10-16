@@ -1,7 +1,7 @@
 accelerate
 datasets >= 1.8.0
 sentencepiece != 0.1.92
-transformers
+git+https://github.com/pszemraj/transformers.git@t5-gqa
 wandb
 pdbpp
 notebook
