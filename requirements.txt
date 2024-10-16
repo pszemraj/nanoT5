@@ -1,16 +1,16 @@
+absl-py
 accelerate
 datasets >= 1.8.0
-sentencepiece != 0.1.92
-git+https://github.com/pszemraj/transformers.git@t5-gqa
-wandb
-pdbpp
-notebook
-protobuf==3.20.*
-pyyaml
-pynvml
-hydra-core
 evaluate
+git+https://github.com/pszemraj/transformers.git@t5-gqa
+hydra-core
 nltk
-absl-py
+notebook
+pdbpp
+protobuf==3.20.*
+pynvml
+pyyaml
 rouge_score
+sentencepiece != 0.1.92
 torch>=2.0.1
+wandb
